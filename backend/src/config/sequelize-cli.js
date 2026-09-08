@@ -1,9 +1,11 @@
 /**
  * Configuración de Sequelize CLI para leer DATABASE_URL desde .env
- * Este archivo es solo para el CLI (migraciones) — el código TypeScript
- * usa src/config/database.ts directamente.
+ * Este archivo es usado solo por el CLI (migraciones).
+ * Usamos path explícito para que funcione sin importar el CWD desde el que
+ * se invoque sequelize-cli.
  */
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 /** @type {import('sequelize').Options} */
 const baseOptions = {
