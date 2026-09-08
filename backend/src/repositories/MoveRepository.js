@@ -1,20 +1,17 @@
-import { Move, PieceColor } from '@/db/models/Move';
+'use strict';
+
+const { Move } = require('../db/models/Move');
 
 /**
  * Repository para la entidad Move.
  * Persiste cada jugada individualmente — nunca al final de la partida.
  */
-export class MoveRepository {
-  async create(params: {
-    gameId: string;
-    moveNumber: number;
-    color: PieceColor;
-    san: string;
-    fenBefore: string;
-    fenAfter: string;
-    timeSpentMs: number;
-    evalScore?: number;
-  }): Promise<Move> {
+class MoveRepository {
+  /**
+   * @param {{ gameId: string, moveNumber: number, color: string, san: string, fenBefore: string, fenAfter: string, timeSpentMs: number, evalScore?: number }} params
+   * @returns {Promise<Move>}
+   */
+  async create(params) {
     return Move.create({
       gameId: params.gameId,
       moveNumber: params.moveNumber,
@@ -27,10 +24,16 @@ export class MoveRepository {
     });
   }
 
-  async findByGameId(gameId: string): Promise<Move[]> {
+  /**
+   * @param {string} gameId
+   * @returns {Promise<Move[]>}
+   */
+  async findByGameId(gameId) {
     return Move.findAll({
       where: { gameId },
       order: [['moveNumber', 'ASC']],
     });
   }
 }
+
+module.exports = { MoveRepository };

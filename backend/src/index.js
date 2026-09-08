@@ -1,17 +1,19 @@
-import express from 'express';
-import cors from 'cors';
-import { createServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
+'use strict';
 
-import { env } from '@/config/env';
-import { sequelize } from '@/config/database';
-import { errorHandler } from '@/middleware/errorHandler';
+const express = require('express');
+const cors = require('cors');
+const { createServer } = require('http');
+const { Server: SocketIOServer } = require('socket.io');
 
-// Importar modelos para registrar asociaciones
-import '@/db/models/index';
+const { env } = require('./config/env');
+const { sequelize } = require('./config/database');
+const { errorHandler } = require('./middleware/errorHandler');
+
+// Inicializar modelos y registrar asociaciones
+require('./db/models/index');
 
 // Rutas
-import healthRouter from '@/routes/health';
+const healthRouter = require('./routes/health');
 
 // ── Express + HTTP server ────────────────────────────────────────────────────
 
@@ -29,7 +31,6 @@ const io = new SocketIOServer(httpServer, {
 
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Cliente conectado: ${socket.id}`);
-
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Cliente desconectado: ${socket.id}`);
   });
@@ -50,7 +51,7 @@ app.use(errorHandler);
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
 
-async function bootstrap(): Promise<void> {
+async function bootstrap() {
   try {
     await sequelize.authenticate();
     console.log('✅ Conexión a la base de datos establecida.');
@@ -67,4 +68,4 @@ async function bootstrap(): Promise<void> {
 
 bootstrap();
 
-export { io };
+module.exports = { io };

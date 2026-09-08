@@ -1,5 +1,7 @@
-import { Router } from 'express';
-import { sequelize } from '@/config/database';
+'use strict';
+
+const { Router } = require('express');
+const { sequelize } = require('../config/database');
 
 const router = Router();
 
@@ -11,9 +13,10 @@ router.get('/', async (_req, res) => {
   try {
     await sequelize.authenticate();
     res.json({ status: 'ok', db: 'connected' });
-  } catch {
+  } catch (err) {
+    console.error('[Health] DB no disponible:', err.message);
     res.status(503).json({ status: 'error', db: 'disconnected' });
   }
 });
 
-export default router;
+module.exports = router;
