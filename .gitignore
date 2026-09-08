@@ -1,0 +1,34 @@
+# Entornos locales
+.env
+.env.local
+.env.*.local
+
+# Dependencias
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Builds
+dist/
+build/
+.next/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Modelos ML entrenados (binarios grandes)
+ai/models/*.pkl
+ai/models/*.joblib
