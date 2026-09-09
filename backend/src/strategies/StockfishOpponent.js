@@ -1,31 +1,42 @@
 'use strict';
 
 const { OpponentStrategy } = require('./OpponentStrategy');
+const { StockfishAdapter } = require('../adapters/StockfishAdapter');
 
 /**
  * Estrategia para el modo Jugador vs Stockfish.
- * Stub — la implementación real con StockfishAdapter va en la Iteración 3.
+ * Delegada al StockfishAdapter que maneja el subproceso UCI.
  */
 class StockfishOpponent extends OpponentStrategy {
   /**
    * @param {number} skillLevel
    * @param {number} searchDepth
    * @param {number} timeLimitMs
+   * @param {StockfishAdapter} [adapter]
    */
-  constructor(skillLevel, searchDepth, timeLimitMs) {
+  constructor(skillLevel, searchDepth, timeLimitMs, adapter) {
     super();
     this.skillLevel = skillLevel;
     this.searchDepth = searchDepth;
     this.timeLimitMs = timeLimitMs;
+    this.adapter = adapter || new StockfishAdapter();
   }
 
-  async getNextMove(_fen) {
-    // TODO (Iteración 3): delegar a StockfishAdapter
-    throw new Error('StockfishOpponent no implementado todavía (Iteración 3).');
+  /**
+   * Calcula la siguiente jugada para la posición FEN dada.
+   * @param {string} fen
+   * @returns {Promise<{ from: string, to: string, promotion?: string, raw: string }>}
+   */
+  async getNextMove(fen) {
+    return this.adapter.getBestMove(fen, {
+      skillLevel: this.skillLevel,
+      searchDepth: this.searchDepth,
+      timeLimitMs: this.timeLimitMs,
+    });
   }
 
   async dispose() {
-    // TODO (Iteración 3): cerrar el proceso de Stockfish
+    // El adaptador maneja el ciclo de vida del subproceso por cálculo
   }
 }
 

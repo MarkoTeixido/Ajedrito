@@ -13,9 +13,10 @@ const { errorHandler } = require('./middleware/errorHandler');
 require('./db/models/index');
 
 // Rutas
-const healthRouter = require('./routes/health');
-const gamesRouter  = require('./routes/games');
-const movesRouter  = require('./routes/moves');
+const healthRouter             = require('./routes/health');
+const gamesRouter              = require('./routes/games');
+const movesRouter              = require('./routes/moves');
+const difficultyProfilesRouter = require('./routes/difficultyProfiles');
 
 // ── Express + HTTP server ────────────────────────────────────────────────────
 
@@ -33,10 +34,18 @@ const io = new SocketIOServer(httpServer, {
 
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Cliente conectado: ${socket.id}`);
+
+  socket.on('join-game', (gameId) => {
+    socket.join(gameId);
+    console.log(`[Socket.io] Socket ${socket.id} se unió a la sala ${gameId}`);
+  });
+
   socket.on('disconnect', () => {
     console.log(`[Socket.io] Cliente desconectado: ${socket.id}`);
   });
 });
+
+app.set('io', io);
 
 // ── Middlewares globales ─────────────────────────────────────────────────────
 
@@ -45,9 +54,10 @@ app.use(express.json());
 
 // ── Rutas ────────────────────────────────────────────────────────────────────
 
-app.use('/health',              healthRouter);
-app.use('/api/games',           gamesRouter);
-app.use('/api/games/:id/moves', movesRouter);
+app.use('/health',                  healthRouter);
+app.use('/api/games',               gamesRouter);
+app.use('/api/games/:id/moves',     movesRouter);
+app.use('/api/difficulty-profiles', difficultyProfilesRouter);
 
 // ── Manejo de errores (debe ir al final) ────────────────────────────────────
 

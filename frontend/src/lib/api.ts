@@ -3,12 +3,21 @@
  * Centraliza todas las llamadas a la API para evitar URLs hardcodeadas.
  */
 
-const BACKEND_URL =
+export const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 export type GameMode = 'PVP' | 'PV_STOCKFISH' | 'PV_AI';
+
+export interface DifficultyProfile {
+  id: string;
+  name: string;
+  engineType: 'STOCKFISH' | 'AI';
+  skillLevel: number;
+  searchDepth: number;
+  timeLimitMs: number;
+}
 
 export interface CreateGameResponse {
   gameId: string;
@@ -23,6 +32,8 @@ export interface GameStateResponse {
     result: string;
     currentFen: string;
     startedAt: string;
+    difficultyProfileId?: string | null;
+    difficultyProfile?: DifficultyProfile | null;
   };
   moves: MoveRecord[];
 }
@@ -48,6 +59,23 @@ export interface MakeMoveResponse {
 }
 
 // ── Funciones ─────────────────────────────────────────────────────────────────
+
+/**
+ * Obtiene los perfiles de dificultad preconfigurados desde el backend.
+ */
+export async function getDifficultyProfiles(engine?: 'STOCKFISH' | 'AI'): Promise<DifficultyProfile[]> {
+  const url = engine
+    ? `${BACKEND_URL}/api/difficulty-profiles?engine=${engine}`
+    : `${BACKEND_URL}/api/difficulty-profiles`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error('No se pudieron cargar los perfiles de dificultad');
+  }
+
+  const data = await res.json();
+  return data.profiles;
+}
 
 /**
  * Crea una nueva partida en el backend.

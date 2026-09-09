@@ -4,7 +4,8 @@ import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard, type PieceDropHandlerArgs } from 'react-chessboard';
 import { useRouter } from 'next/navigation';
-import { getGame, makeMove, type MoveRecord } from '@/lib/api';
+import { io, Socket } from 'socket.io-client';
+import { getGame, makeMove, BACKEND_URL, type MoveRecord, type GameMode } from '@/lib/api';
 
 const INITIAL_FEN =
   'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -32,11 +33,14 @@ export default function GamePage({
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameResult, setGameResult] = useState('IN_PROGRESS');
   const [isCheck, setIsCheck] = useState(false);
-  const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>(
-    'white',
-  );
+  const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Modo de juego y dificultad
+  const [gameMode, setGameMode] = useState<GameMode>('PVP');
+  const [difficultyName, setDifficultyName] = useState<string | null>(null);
+  const [isOpponentThinking, setIsOpponentThinking] = useState(false);
 
   // Historial de jugadas scrollable — siempre al final
   const historyEndRef = useRef<HTMLDivElement>(null);
@@ -48,25 +52,73 @@ export default function GamePage({
   useEffect(() => {
     getGame(gameId)
       .then(({ game, moves }) => {
-        const fen = game.currentFen || INITIAL_FEN;
-        chessRef.current.load(fen);
-        setFen(fen);
+        const initialFen = game.currentFen || INITIAL_FEN;
+        chessRef.current.load(initialFen);
+        setFen(initialFen);
         setMoveHistory(moves);
         setIsGameOver(game.result !== 'IN_PROGRESS');
         setGameResult(game.result);
+        setGameMode(game.mode);
+        if (game.difficultyProfile) {
+          setDifficultyName(game.difficultyProfile.name);
+        }
       })
       .catch(() => setLoadError('No se pudo cargar la partida'))
       .finally(() => setLoading(false));
   }, [gameId]);
 
+  // Conexión Socket.io para escuchar movimientos del rival (Stockfish / IA)
+  useEffect(() => {
+    const socket: Socket = io(BACKEND_URL);
+
+    socket.emit('join-game', gameId);
+
+    socket.on(
+      'opponent-move',
+      (data: {
+        move: MoveRecord;
+        newFen: string;
+        isGameOver: boolean;
+        result: string;
+        isCheck: boolean;
+        turn: 'white' | 'black';
+      }) => {
+        chessRef.current.load(data.newFen);
+        setFen(data.newFen);
+        setIsCheck(data.isCheck);
+        setMoveHistory((prev) => [...prev, data.move]);
+        setIsOpponentThinking(false);
+
+        if (data.isGameOver) {
+          setIsGameOver(true);
+          setGameResult(data.result);
+        }
+      },
+    );
+
+    socket.on('opponent-error', (err: { message: string }) => {
+      setIsOpponentThinking(false);
+      alert(`⚠️ ${err.message || 'Error del motor rival'}`);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [gameId]);
+
   // Manejar el drop de una pieza en el tablero
   const onPieceDrop = useCallback(
     ({ piece, sourceSquare, targetSquare }: PieceDropHandlerArgs): boolean => {
-      if (isGameOver || !targetSquare) return false;
+      if (isGameOver || isOpponentThinking || !targetSquare) return false;
 
       const chess = chessRef.current;
 
-      // Evitar que el color equivocado mueva (PVP hotseat)
+      // Si es vs Stockfish, el humano solo mueve con blancas
+      if (gameMode === 'PV_STOCKFISH' && chess.turn() !== 'w') {
+        return false;
+      }
+
+      // Evitar que el color equivocado mueva en hotseat
       const pieceColor = piece.pieceType[0]; // 'w' o 'b'
       if (chess.turn() !== pieceColor) return false;
 
@@ -90,6 +142,11 @@ export default function GamePage({
       setFen(chess.fen());
       setIsCheck(chess.isCheck());
 
+      // Si jugamos contra Stockfish, indicar que el motor empezará a pensar
+      if (gameMode === 'PV_STOCKFISH') {
+        setIsOpponentThinking(true);
+      }
+
       // Sincronizar con el backend (persiste la jugada en DB)
       makeMove(gameId, sourceSquare, targetSquare)
         .then((data) => {
@@ -102,6 +159,7 @@ export default function GamePage({
           if (data.isGameOver) {
             setIsGameOver(true);
             setGameResult(data.result);
+            setIsOpponentThinking(false);
           }
         })
         .catch(() => {
@@ -109,11 +167,12 @@ export default function GamePage({
           chess.load(prevFen);
           setFen(prevFen);
           setIsCheck(false);
+          setIsOpponentThinking(false);
         });
 
       return true; // aceptar el drop
     },
-    [gameId, isGameOver],
+    [gameId, isGameOver, isOpponentThinking, gameMode],
   );
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -142,17 +201,27 @@ export default function GamePage({
 
   const chess = chessRef.current;
   const turn = chess.turn() === 'w' ? 'white' : 'black';
-  const turnLabel =
-    turn === 'white' ? '♙ Turno: Blancas' : '♟ Turno: Negras';
+  const turnLabel = turn === 'white' ? '♙ Turno: Blancas' : '♟ Turno: Negras';
+
+  const isDraggable =
+    !isGameOver &&
+    !isOpponentThinking &&
+    (gameMode === 'PVP' || turn === 'white');
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4">
       {/* Encabezado */}
       <div className="flex items-center gap-3">
-        <span className="text-3xl">♟</span>
+        <span className="text-3xl">
+          {gameMode === 'PV_STOCKFISH' ? '🤖' : '♟'}
+        </span>
         <div>
           <h1 className="text-2xl font-bold text-white leading-tight">Ajedrito</h1>
-          <p className="text-sm text-gray-400">Jugador vs Jugador</p>
+          <p className="text-sm text-gray-400">
+            {gameMode === 'PV_STOCKFISH'
+              ? `vs Stockfish · ${difficultyName || 'Nivel estándar'}`
+              : 'Jugador vs Jugador (Hotseat)'}
+          </p>
         </div>
       </div>
 
@@ -164,6 +233,10 @@ export default function GamePage({
           {isGameOver ? (
             <div className="px-5 py-2 rounded-xl bg-yellow-500/20 border border-yellow-400/40 text-yellow-300 font-semibold text-base">
               {RESULT_LABELS[gameResult] ?? 'Partida terminada'}
+            </div>
+          ) : isOpponentThinking ? (
+            <div className="px-5 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-medium text-base animate-pulse flex items-center gap-2">
+              <span>🤖</span> Stockfish está calculando…
             </div>
           ) : (
             <div
@@ -184,7 +257,7 @@ export default function GamePage({
                 position: fen,
                 onPieceDrop,
                 boardOrientation,
-                allowDragging: !isGameOver,
+                allowDragging: isDraggable,
                 boardStyle: {
                   borderRadius: '8px',
                   boxShadow: '0 30px 60px rgba(0,0,0,0.6)',
@@ -222,44 +295,39 @@ export default function GamePage({
             Historial de jugadas
           </h2>
 
-          <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-3 h-80 overflow-y-auto text-sm">
+          <div className="h-[480px] w-full rounded-2xl border border-gray-800 bg-gray-900/60 p-3 overflow-y-auto font-mono text-sm shadow-inner">
             {moveHistory.length === 0 ? (
-              <p className="text-gray-600 text-center mt-8">Sin jugadas aún</p>
+              <p className="text-gray-600 text-xs italic p-2">Sin jugadas aún</p>
             ) : (
-              <table className="w-full">
-                <tbody>
-                  {Array.from(
-                    { length: Math.ceil(moveHistory.length / 2) },
-                    (_, i) => {
-                      const white = moveHistory[i * 2];
-                      const black = moveHistory[i * 2 + 1];
-                      return (
-                        <tr
-                          key={i}
-                          className="border-b border-gray-700/40 last:border-0"
-                        >
-                          <td className="py-1 pr-2 text-gray-500 w-6 text-right">
-                            {i + 1}.
-                          </td>
-                          <td className="py-1 pr-3 text-white font-mono">
-                            {white?.san}
-                          </td>
-                          <td className="py-1 text-gray-400 font-mono">
-                            {black?.san ?? ''}
-                          </td>
-                        </tr>
-                      );
-                    },
-                  )}
-                </tbody>
-              </table>
-            )}
-            <div ref={historyEndRef} />
-          </div>
+              <div className="flex flex-col gap-1">
+                {/* Agrupar en pares: Blanca / Negra */}
+                {Array.from(
+                  { length: Math.ceil(moveHistory.length / 2) },
+                  (_, i) => {
+                    const white = moveHistory[i * 2];
+                    const black = moveHistory[i * 2 + 1];
+                    const moveNum = i + 1;
 
-          <p className="text-xs text-gray-600 text-center font-mono">
-            {gameId.slice(0, 8)}…
-          </p>
+                    return (
+                      <div
+                        key={moveNum}
+                        className="flex items-center justify-between px-2 py-1 rounded-md text-xs hover:bg-gray-800/80 transition"
+                      >
+                        <span className="text-gray-500 w-6">{moveNum}.</span>
+                        <span className="text-gray-200 flex-1 font-semibold">
+                          {white?.san ?? ''}
+                        </span>
+                        <span className="text-gray-400 flex-1">
+                          {black?.san ?? ''}
+                        </span>
+                      </div>
+                    );
+                  },
+                )}
+                <div ref={historyEndRef} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

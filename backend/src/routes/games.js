@@ -2,8 +2,7 @@
 
 const { Router } = require('express');
 const { GameMode } = require('../db/models/Game');
-const { Game } = require('../db/models/index');
-const { Move } = require('../db/models/index');
+const { Game, Move, DifficultyProfile } = require('../db/models/index');
 const { GameSessionFactory } = require('../factories/GameSessionFactory');
 const { AppError } = require('../middleware/errorHandler');
 
@@ -56,7 +55,9 @@ router.get('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const game = await Game.findByPk(id);
+    const game = await Game.findByPk(id, {
+      include: [{ model: DifficultyProfile, as: 'difficultyProfile' }],
+    });
     if (!game) return next(new AppError(404, 'Partida no encontrada'));
 
     // Cargar historial de jugadas para mostrar en el frontend
