@@ -14,6 +14,8 @@ require('./db/models/index');
 
 // Rutas
 const healthRouter = require('./routes/health');
+const gamesRouter  = require('./routes/games');
+const movesRouter  = require('./routes/moves');
 
 // ── Express + HTTP server ────────────────────────────────────────────────────
 
@@ -43,7 +45,9 @@ app.use(express.json());
 
 // ── Rutas ────────────────────────────────────────────────────────────────────
 
-app.use('/health', healthRouter);
+app.use('/health',              healthRouter);
+app.use('/api/games',           gamesRouter);
+app.use('/api/games/:id/moves', movesRouter);
 
 // ── Manejo de errores (debe ir al final) ────────────────────────────────────
 

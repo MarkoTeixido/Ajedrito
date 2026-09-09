@@ -18,6 +18,7 @@ class GameRepository {
       blackType: params.blackType,
       difficultyProfileId: params.difficultyProfileId ?? null,
       result: GameResult.IN_PROGRESS,
+      currentFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     });
   }
 

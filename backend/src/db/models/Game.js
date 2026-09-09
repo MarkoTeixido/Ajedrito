@@ -62,6 +62,12 @@ Game.init(
       allowNull: false,
       defaultValue: GameResult.IN_PROGRESS,
     },
+    currentFen: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      field: 'current_fen',
+    },
     startedAt: {
       type: DataTypes.DATE,
       allowNull: false,
