@@ -9,6 +9,7 @@
     "migrate": "sequelize-cli db:migrate",
     "migrate:undo": "sequelize-cli db:migrate:undo",
     "migrate:undo:all": "sequelize-cli db:migrate:undo:all",
+    "setup:stockfish": "node scripts/download-stockfish.js",
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
