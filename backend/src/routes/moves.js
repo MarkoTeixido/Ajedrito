@@ -8,6 +8,7 @@ const { DifficultyProfile } = require('../db/models/DifficultyProfile');
 const { MoveRepository } = require('../repositories/MoveRepository');
 const { GameRepository } = require('../repositories/GameRepository');
 const { StockfishOpponent } = require('../strategies/StockfishOpponent');
+const { CustomAIOpponent } = require('../strategies/CustomAIOpponent');
 const { AppError } = require('../middleware/errorHandler');
 
 const router = Router({ mergeParams: true });
@@ -113,6 +114,97 @@ async function handleStockfishTurn(gameId, fenAfter, difficultyProfileId, io) {
   }
 }
 
+/**
+ * Procesa la jugada de la IA propia (FastAPI) de forma asíncrona y emite el resultado por Socket.io.
+ * Persiste la jugada de inmediato en la base de datos según los requerimientos de GEMINI.md.
+ * @param {string} gameId
+ * @param {string} fenAfter
+ * @param {import('socket.io').Server|null} io
+ */
+async function handleCustomAITurn(gameId, fenAfter, io) {
+  try {
+    const opponent = new CustomAIOpponent();
+    const startMs = Date.now();
+    const opponentMove = await opponent.getNextMove(fenAfter, gameId);
+    const timeSpentMs = Date.now() - startMs;
+
+    const chess = new Chess(fenAfter);
+    let moveResult;
+    try {
+      moveResult = chess.move({
+        from: opponentMove.from,
+        to: opponentMove.to,
+        promotion: opponentMove.promotion || 'q',
+      });
+    } catch (moveErr) {
+      console.error('[AI-Service] Error aplicando jugada predicha:', moveErr);
+      return;
+    }
+
+    if (!moveResult) {
+      console.error('[AI-Service] Jugada ilegal devuelta por el modelo:', opponentMove);
+      return;
+    }
+
+    const moveCount = await Move.count({ where: { gameId } });
+    const fenFinal = chess.fen();
+    const moveColor = moveResult.color === 'w' ? 'white' : 'black';
+
+    // Persistir jugada de la IA propia inmediatamente en DB
+    const savedMove = await moveRepo.create({
+      gameId,
+      moveNumber: moveCount + 1,
+      color: moveColor,
+      san: moveResult.san,
+      fenBefore: fenAfter,
+      fenAfter: fenFinal,
+      timeSpentMs,
+    });
+
+    await Game.update({ currentFen: fenFinal }, { where: { id: gameId } });
+
+    // Detectar fin de partida tras la jugada de la IA
+    let result = GameResult.IN_PROGRESS;
+    let isGameOver = false;
+
+    if (chess.isCheckmate()) {
+      result = moveResult.color === 'w' ? GameResult.WHITE_WINS : GameResult.BLACK_WINS;
+      isGameOver = true;
+    } else if (
+      chess.isStalemate() ||
+      chess.isInsufficientMaterial() ||
+      chess.isThreefoldRepetition() ||
+      chess.isDraw()
+    ) {
+      result = GameResult.DRAW;
+      isGameOver = true;
+    }
+
+    if (isGameOver) {
+      await gameRepo.updateResult(gameId, result);
+    }
+
+    if (io) {
+      io.to(gameId).emit('opponent-move', {
+        move: savedMove,
+        newFen: fenFinal,
+        isGameOver,
+        result,
+        isCheck: chess.isCheck(),
+        turn: chess.turn() === 'w' ? 'white' : 'black',
+        aiMethod: opponentMove.method,
+      });
+    }
+  } catch (err) {
+    console.error('[AI-Service] Error procesando jugada de IA propia:', err);
+    if (io) {
+      io.to(gameId).emit('opponent-error', {
+        message: 'Ocurrió un error al comunicarse con el servicio de IA propia.',
+      });
+    }
+  }
+}
+
 // ── POST /api/games/:id/moves ────────────────────────────────────────────────
 // Procesa una jugada: valida con chess.js, persiste en DB y detecta fin de partida.
 // CRÍTICO: la jugada se guarda en la DB en el momento en que ocurre, no al final.
@@ -201,10 +293,13 @@ router.post('/', async (req, res, next) => {
       turn: chess.turn() === 'w' ? 'white' : 'black',
     });
 
-    // Si la partida no terminó y el rival es Stockfish, calcular jugada asíncrona
+    // Si la partida no terminó y el rival es Stockfish o IA propia, calcular jugada asíncrona
     if (!isGameOver && game.mode === GameMode.PV_STOCKFISH) {
       const io = req.app.get('io');
       handleStockfishTurn(id, fenAfter, game.difficultyProfileId, io);
+    } else if (!isGameOver && game.mode === GameMode.PV_AI) {
+      const io = req.app.get('io');
+      handleCustomAITurn(id, fenAfter, io);
     }
   } catch (err) {
     next(err);

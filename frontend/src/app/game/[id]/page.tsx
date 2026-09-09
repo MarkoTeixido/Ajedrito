@@ -113,8 +113,8 @@ export default function GamePage({
 
       const chess = chessRef.current;
 
-      // Si es vs Stockfish, el humano solo mueve con blancas
-      if (gameMode === 'PV_STOCKFISH' && chess.turn() !== 'w') {
+      // Si es vs Stockfish o vs IA Propia, el humano solo mueve con blancas
+      if ((gameMode === 'PV_STOCKFISH' || gameMode === 'PV_AI') && chess.turn() !== 'w') {
         return false;
       }
 
@@ -142,8 +142,8 @@ export default function GamePage({
       setFen(chess.fen());
       setIsCheck(chess.isCheck());
 
-      // Si jugamos contra Stockfish, indicar que el motor empezará a pensar
-      if (gameMode === 'PV_STOCKFISH') {
+      // Si jugamos contra un motor o IA, indicar que el rival empezará a pensar
+      if (gameMode === 'PV_STOCKFISH' || gameMode === 'PV_AI') {
         setIsOpponentThinking(true);
       }
 
@@ -213,13 +213,15 @@ export default function GamePage({
       {/* Encabezado */}
       <div className="flex items-center gap-3">
         <span className="text-3xl">
-          {gameMode === 'PV_STOCKFISH' ? '🤖' : '♟'}
+          {gameMode === 'PV_STOCKFISH' ? '🤖' : gameMode === 'PV_AI' ? '🧠' : '♟'}
         </span>
         <div>
           <h1 className="text-2xl font-bold text-white leading-tight">Ajedrito</h1>
           <p className="text-sm text-gray-400">
             {gameMode === 'PV_STOCKFISH'
               ? `vs Stockfish · ${difficultyName || 'Nivel estándar'}`
+              : gameMode === 'PV_AI'
+              ? 'vs IA Propia · Modelo scikit-learn'
               : 'Jugador vs Jugador (Hotseat)'}
           </p>
         </div>
@@ -235,8 +237,13 @@ export default function GamePage({
               {RESULT_LABELS[gameResult] ?? 'Partida terminada'}
             </div>
           ) : isOpponentThinking ? (
-            <div className="px-5 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-medium text-base animate-pulse flex items-center gap-2">
-              <span>🤖</span> Stockfish está calculando…
+            <div className={`px-5 py-2 rounded-xl border font-medium text-base animate-pulse flex items-center gap-2 ${
+              gameMode === 'PV_AI'
+                ? 'bg-purple-500/20 border-purple-400/40 text-purple-300'
+                : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+            }`}>
+              <span>{gameMode === 'PV_AI' ? '🧠' : '🤖'}</span>{' '}
+              {gameMode === 'PV_AI' ? 'IA Propia está calculando…' : 'Stockfish está calculando…'}
             </div>
           ) : (
             <div

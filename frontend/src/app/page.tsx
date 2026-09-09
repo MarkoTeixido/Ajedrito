@@ -34,6 +34,19 @@ export default function Home() {
     }
   };
 
+  const startAIGame = async () => {
+    setLoading('ai');
+    try {
+      const data = await createGame('PV_AI');
+      router.push(`/game/${data.gameId}`);
+    } catch (err) {
+      alert('❌ No se pudo crear la partida contra la IA propia. ¿Está el backend y el ai-service corriendo?');
+      console.error(err);
+    } finally {
+      setLoading(null);
+    }
+  };
+
   const handleOpenStockfishModal = async () => {
     setShowStockfishModal(true);
     setLoadingProfiles(true);
@@ -115,20 +128,28 @@ export default function Home() {
           </span>
         </button>
 
-        {/* IA propia — próximamente */}
+        {/* IA propia — activo */}
         <button
           id="btn-ai"
-          disabled
-          className="w-64 rounded-2xl border border-gray-700/40 bg-gray-800/40 px-6 py-5 text-left cursor-not-allowed opacity-50"
+          onClick={startAIGame}
+          disabled={loading === 'ai'}
+          className="w-64 rounded-2xl border border-gray-700 bg-gray-800 px-6 py-5 text-left transition
+            hover:border-purple-500 hover:bg-gray-700
+            focus:outline-none focus:ring-2 focus:ring-purple-500
+            disabled:opacity-60 disabled:cursor-wait"
         >
-          <span className="block text-2xl mb-1">🧠</span>
-          <span className="block font-semibold text-gray-400">vs IA Propia</span>
-          <span className="block text-sm text-gray-500 mt-1">Próximamente (Iteración 4)</span>
+          <span className="block text-2xl mb-1">
+            {loading === 'ai' ? '⏳' : '🧠'}
+          </span>
+          <span className="block font-semibold text-white">vs IA Propia</span>
+          <span className="block text-sm text-gray-400 mt-1">
+            Modelo entrenado con jugadas guardadas
+          </span>
         </button>
       </div>
 
       <p className="text-xs text-gray-600 mt-4">
-        Iteración 3 — Modos PVP y Stockfish activos ✓
+        Iteración 4 — Los 3 modos de juego activos (PVP, Stockfish e IA Propia) ✓
       </p>
 
       {/* Modal de selección de dificultad Stockfish */}

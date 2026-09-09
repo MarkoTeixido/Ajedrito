@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.health import router as health_router
+from src.api.predict import router as predict_router
 
 app = FastAPI(
     title="Ajedrito AI Service",
@@ -23,6 +24,7 @@ app.add_middleware(
 
 # Routers
 app.include_router(health_router)
+app.include_router(predict_router)
 
 
 @app.get("/", include_in_schema=False)
