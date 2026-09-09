@@ -26,8 +26,8 @@ router.post('/', async (req, res, next) => {
       );
     }
 
-    // Para modos contra motor, difficultyProfileId es obligatorio
-    if (mode !== GameMode.PVP && !difficultyProfileId) {
+    // Para el modo contra Stockfish, difficultyProfileId es obligatorio
+    if (mode === GameMode.PV_STOCKFISH && !difficultyProfileId) {
       return next(
         new AppError(400, `Se requiere difficultyProfileId para el modo ${mode}`),
       );
