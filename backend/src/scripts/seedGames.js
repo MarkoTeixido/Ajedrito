@@ -189,11 +189,3 @@ seedGames()
     console.error('❌ Error durante el seeding:', err);
     process.exit(1);
   });
-
-
-/**
- * Colección curada de partidas magistrales y líneas de apertura variadas
- * para resolver el problema de arranque en frío (Cold Start) de la IA.
- * Todas las partidas se etiquetan con source = 'SEED'.
- */
-const SEED_GAMES = [
