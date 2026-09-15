@@ -1,26 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;0,900;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #F6F5F0;
+  --foreground: #23372D;
+  --primary-forest: #233E31;
+  --primary-forest-hover: #1A3026;
+  --board-dark: #879D8B;
+  --board-light: #DFE6DF;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body {
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #F6F5F0;
+  color: #23372D;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+.font-serif-title {
+  font-family: 'Merriweather', Georgia, serif;
+}
+
+/* Scrollbar sutil y contenida para el historial de jugadas */
+.ajedrito-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(35, 62, 49, 0.25) transparent;
+}
+
+.ajedrito-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.ajedrito-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ajedrito-scroll::-webkit-scrollbar-thumb {
+  background: rgba(35, 62, 49, 0.25);
+  border-radius: 9999px;
+}
+.ajedrito-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(35, 62, 49, 0.45);
 }

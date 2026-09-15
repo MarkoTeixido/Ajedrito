@@ -22,6 +22,9 @@ export interface DifficultyProfile {
 export interface CreateGameResponse {
   gameId: string;
   mode: GameMode;
+  playerColor?: 'white' | 'black';
+  whiteType?: string;
+  blackType?: string;
   fen: string;
 }
 
@@ -30,6 +33,9 @@ export interface GameStateResponse {
     id: string;
     mode: GameMode;
     result: string;
+    whiteType: 'HUMAN' | 'STOCKFISH' | 'AI';
+    blackType: 'HUMAN' | 'STOCKFISH' | 'AI';
+    source?: string;
     currentFen: string;
     startedAt: string;
     difficultyProfileId?: string | null;
@@ -83,11 +89,12 @@ export async function getDifficultyProfiles(engine?: 'STOCKFISH' | 'AI'): Promis
 export async function createGame(
   mode: GameMode,
   difficultyProfileId?: string,
+  playerColor: 'white' | 'black' = 'white',
 ): Promise<CreateGameResponse> {
   const res = await fetch(`${BACKEND_URL}/api/games`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode, difficultyProfileId }),
+    body: JSON.stringify({ mode, difficultyProfileId, playerColor }),
   });
 
   if (!res.ok) {

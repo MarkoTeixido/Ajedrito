@@ -68,3 +68,19 @@ def test_predict_endpoint_via_http():
     assert "to" in data
     assert data["from"] is not None
     assert data["to"] is not None
+    assert "adaptive_level" in data
+
+
+def test_predict_adaptive_difficulty():
+    # Posición normal igualada -> nivel adaptativo 'standard'
+    fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+    res_adaptive = predict_move(fen, difficulty="adaptive")
+    assert res_adaptive["adaptive_level"] == "standard"
+
+    # En modo fácil forzado -> nivel adaptativo 'benevolent'
+    res_easy = predict_move(fen, difficulty="easy")
+    assert res_easy["adaptive_level"] == "benevolent"
+
+    # En modo difícil forzado -> nivel adaptativo 'challenging'
+    res_hard = predict_move(fen, difficulty="hard")
+    assert res_hard["adaptive_level"] == "challenging"

@@ -10,6 +10,7 @@ class PredictRequest(BaseModel):
     """Petición de predicción de jugada."""
     fen: str = Field(..., description="Posición actual en formato FEN")
     game_id: Optional[str] = Field(None, description="Identificador único de la partida")
+    difficulty: Optional[str] = Field("adaptive", description="Política de dificultad ('adaptive', 'easy', 'medium', 'hard')")
 
 
 class PredictResponse(BaseModel):
@@ -21,6 +22,7 @@ class PredictResponse(BaseModel):
     promotion: Optional[str] = Field(None, description="Pieza de promoción ('q', 'r', 'b', 'n')")
     confidence: Optional[float] = Field(None, description="Confianza asignada por el modelo (0.0 a 1.0)")
     method: str = Field("ml", description="Método utilizado ('ml' o 'heuristic')")
+    adaptive_level: Optional[str] = Field("standard", description="Nivel adaptativo aplicado ('benevolent', 'standard', 'challenging')")
 
     class Config:
         populate_by_name = True
@@ -30,6 +32,8 @@ class TrainResponse(BaseModel):
     """Respuesta del job batch de entrenamiento."""
     status: str
     dataset_size: int
+    seed_moves: Optional[int] = None
+    user_moves: Optional[int] = None
     classes_count: Optional[int] = None
     train_accuracy: Optional[float] = None
     model_path: Optional[str] = None

@@ -3,6 +3,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { Chess } = require('chess.js');
 
 /**
  * Adaptador para el motor de ajedrez Stockfish mediante el protocolo UCI (Universal Chess Interface).
@@ -52,11 +53,18 @@ class StockfishAdapter {
       );
     }
 
+    // Validar el FEN antes de lanzar el subproceso para detectar errores temprano
+    try {
+      new Chess(fen);
+    } catch {
+      throw new Error(`FEN inválido proporcionado a Stockfish: "${fen}"`);
+    }
+
     return new Promise((resolve, reject) => {
       let resolved = false;
       const child = spawn(this.executablePath);
 
-      // Tiempo límite de seguridad (el tiempo solicitado + 2000ms de gracia)
+      // Tiempo límite de seguridad: tiempo solicitado + 2000ms de gracia
       const timeoutTimer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
@@ -67,9 +75,7 @@ class StockfishAdapter {
 
       const cleanup = () => {
         clearTimeout(timeoutTimer);
-        try {
-          child.stdin.write('quit\n');
-        } catch (_) {}
+        try { child.stdin.write('quit\n'); } catch (_) { /* proceso ya cerrado */ }
       };
 
       child.on('error', (err) => {
@@ -78,6 +84,11 @@ class StockfishAdapter {
           clearTimeout(timeoutTimer);
           reject(new Error(`Error al invocar proceso de Stockfish: ${err.message}`));
         }
+      });
+
+      // Capturar stderr para facilitar depuración
+      child.stderr?.on('data', (data) => {
+        console.error('[StockfishAdapter/stderr]', data.toString().trim());
       });
 
       let stdoutBuffer = '';

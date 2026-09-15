@@ -20,13 +20,15 @@ class GameSessionFactory {
   }
 
   /**
-   * @param {{ mode: string, difficultyProfileId?: string }} params
-   * @returns {Promise<{ gameId: string, mode: string, opponentStrategy: import('../strategies/OpponentStrategy').OpponentStrategy, gameRepo: GameRepository, moveRepo: MoveRepository }>}
+   * @param {{ mode: string, difficultyProfileId?: string, playerColor?: 'white'|'black' }} params
+   * @returns {Promise<{ gameId: string, mode: string, whiteType: string, blackType: string, opponentStrategy: import('../strategies/OpponentStrategy').OpponentStrategy, gameRepo: GameRepository, moveRepo: MoveRepository }>}
    */
-  async create({ mode, difficultyProfileId }) {
+  async create({ mode, difficultyProfileId, playerColor = 'white' }) {
     let whiteType;
     let blackType;
     let opponentStrategy;
+
+    const isHumanWhite = playerColor !== 'black';
 
     switch (mode) {
       case GameMode.PVP:
@@ -44,8 +46,8 @@ class GameSessionFactory {
           throw new Error(`DifficultyProfile no encontrado: ${difficultyProfileId}`);
         }
 
-        whiteType = PlayerType.HUMAN;
-        blackType = PlayerType.STOCKFISH;
+        whiteType = isHumanWhite ? PlayerType.HUMAN : PlayerType.STOCKFISH;
+        blackType = isHumanWhite ? PlayerType.STOCKFISH : PlayerType.HUMAN;
         opponentStrategy = new StockfishOpponent(
           profile.skillLevel,
           profile.searchDepth,
@@ -55,8 +57,8 @@ class GameSessionFactory {
       }
 
       case GameMode.PV_AI:
-        whiteType = PlayerType.HUMAN;
-        blackType = PlayerType.AI;
+        whiteType = isHumanWhite ? PlayerType.HUMAN : PlayerType.AI;
+        blackType = isHumanWhite ? PlayerType.AI : PlayerType.HUMAN;
         opponentStrategy = new CustomAIOpponent();
         break;
 
@@ -69,6 +71,8 @@ class GameSessionFactory {
     return {
       gameId: game.id,
       mode,
+      whiteType,
+      blackType,
       opponentStrategy,
       gameRepo: this.gameRepo,
       moveRepo: this.moveRepo,

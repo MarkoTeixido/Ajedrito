@@ -27,6 +27,12 @@ const GameResult = Object.freeze({
   DRAW: 'DRAW',
 });
 
+/** @enum {string} */
+const GameSource = Object.freeze({
+  USER: 'USER',
+  SEED: 'SEED',
+});
+
 // ── Modelo ───────────────────────────────────────────────────────────────────
 
 class Game extends Model {}
@@ -79,6 +85,12 @@ Game.init(
       allowNull: true,
       field: 'ended_at',
     },
+    source: {
+      type: DataTypes.ENUM(...Object.values(GameSource)),
+      allowNull: false,
+      defaultValue: GameSource.USER,
+      field: 'source',
+    },
   },
   {
     sequelize,
@@ -88,4 +100,4 @@ Game.init(
   },
 );
 
-module.exports = { Game, GameMode, PlayerType, GameResult };
+module.exports = { Game, GameMode, PlayerType, GameResult, GameSource };

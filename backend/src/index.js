@@ -1,7 +1,8 @@
 'use strict';
 
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
+const morgan  = require('morgan');
 const { createServer } = require('http');
 const { Server: SocketIOServer } = require('socket.io');
 
@@ -9,7 +10,7 @@ const { env } = require('./config/env');
 const { sequelize } = require('./config/database');
 const { errorHandler } = require('./middleware/errorHandler');
 
-// Inicializar modelos y registrar asociaciones
+// Inicializar modelos y registrar asociaciones antes de cualquier uso
 require('./db/models/index');
 
 // Rutas
@@ -20,14 +21,14 @@ const difficultyProfilesRouter = require('./routes/difficultyProfiles');
 
 // ── Express + HTTP server ────────────────────────────────────────────────────
 
-const app = express();
+const app        = express();
 const httpServer = createServer(app);
 
 // ── Socket.io ────────────────────────────────────────────────────────────────
 
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: env.FRONTEND_URL,
+    origin:  env.FRONTEND_URL,
     methods: ['GET', 'POST'],
   },
 });
@@ -45,12 +46,18 @@ io.on('connection', (socket) => {
   });
 });
 
+// Exponer io para que los routers puedan emitir eventos
 app.set('io', io);
 
 // ── Middlewares globales ─────────────────────────────────────────────────────
 
 app.use(cors({ origin: env.FRONTEND_URL }));
 app.use(express.json());
+
+// Logger HTTP — solo en desarrollo para no contaminar los logs de producción
+if (env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
 
 // ── Rutas ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +66,7 @@ app.use('/api/games',               gamesRouter);
 app.use('/api/games/:id/moves',     movesRouter);
 app.use('/api/difficulty-profiles', difficultyProfilesRouter);
 
-// ── Manejo de errores (debe ir al final) ────────────────────────────────────
+// ── Manejo de errores (debe ir después de todas las rutas) ───────────────────
 
 app.use(errorHandler);
 
@@ -80,6 +87,29 @@ async function bootstrap() {
   });
 }
 
+// ── Graceful shutdown ────────────────────────────────────────────────────────
+// Cierra el servidor ordenadamente al recibir señales del sistema operativo.
+// Esto garantiza que las conexiones activas terminen antes de salir.
+
+function shutdown(signal) {
+  console.log(`\n[Server] Señal ${signal} recibida. Cerrando servidor...`);
+  httpServer.close(async () => {
+    try {
+      await sequelize.close();
+      console.log('[Server] Conexión a la base de datos cerrada.');
+    } catch (err) {
+      console.error('[Server] Error cerrando la DB:', err);
+    }
+    console.log('[Server] Servidor apagado correctamente.');
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+
 bootstrap();
 
 module.exports = { io };
+
+

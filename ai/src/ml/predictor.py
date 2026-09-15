@@ -30,11 +30,24 @@ def load_model():
     return _cached_model
 
 
-def _heuristic_best_move(board: chess.Board) -> chess.Move:
+def _calculate_material_balance(board: chess.Board) -> int:
     """
-    Heurística de contingencia para elegir la mejor jugada legal cuando el modelo
-    aún no tiene suficientes datos o no predijo una jugada legal para esta posición:
-    Prioriza capturas de piezas de mayor valor, jaques y control del centro.
+    Calcula la diferencia de material desde la perspectiva del turno activo.
+    Positivo: ventaja del turno activo. Negativo: desventaja.
+    """
+    values = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+    turn_color = board.turn
+    opp_color = not turn_color
+
+    my_score = sum(len(board.pieces(pt, turn_color)) * val for pt, val in values.items())
+    opp_score = sum(len(board.pieces(pt, opp_color)) * val for pt, val in values.items())
+    return my_score - opp_score
+
+
+def _heuristic_moves(board: chess.Board) -> list:
+    """
+    Puntúa todas las jugadas legales con criterios posicionales y tácticos:
+    capturas, jaques, control central, enroque y desarrollo.
     """
     legal_moves = list(board.legal_moves)
     if not legal_moves:
@@ -72,16 +85,42 @@ def _heuristic_best_move(board: chess.Board) -> chess.Move:
         if board.is_castling(move):
             score += 12
 
+        # 5. Promoción de peón
+        if move.promotion:
+            score += 80
+
         scored_moves.append((score, move))
 
-    # Ordenar de mayor a menor puntaje y seleccionar la mejor
+    # Ordenar de mayor a menor puntaje
     scored_moves.sort(key=lambda x: x[0], reverse=True)
-    return scored_moves[0][1]
+    return scored_moves
 
 
-def predict_move(fen: str) -> Dict[str, Any]:
+def _heuristic_best_move(board: chess.Board, adaptive_level: str = "standard") -> chess.Move:
     """
-    Predice la próxima jugada para una posición dada en FEN.
+    Selecciona una jugada legal según la política adaptativa:
+    - 'challenging': la mejor jugada táctica de máxima puntuación.
+    - 'benevolent': si el jugador está perdiendo fuertemente, selecciona una jugada sólida de desarrollo
+      en lugar de la combinación más destructiva, manteniendo la partida competitiva.
+    - 'standard': la mejor jugada legal disponible.
+    """
+    scored = _heuristic_moves(board)
+    if not scored:
+        raise ValueError("No hay jugadas legales.")
+
+    if adaptive_level == "benevolent" and len(scored) > 1:
+        # Elegir una jugada sólida pero no la más agresiva si la mejor es una captura aplastante
+        for score, move in scored[1:]:
+            if not board.is_capture(move):
+                return move
+        return scored[1][1]
+
+    return scored[0][1]
+
+
+def predict_move(fen: str, difficulty: str = "adaptive") -> Dict[str, Any]:
+    """
+    Predice la próxima jugada para una posición dada en FEN aplicando la política adaptativa.
     Garantiza que la jugada seleccionada sea 100% legal según las reglas de la FIDE.
     """
     board = chess.Board(fen)
@@ -91,6 +130,22 @@ def predict_move(fen: str) -> Dict[str, Any]:
 
     legal_moves = list(board.legal_moves)
     legal_uci_set = {m.uci(): m for m in legal_moves}
+
+    # Evaluar balance de material en la posición
+    mat_balance = _calculate_material_balance(board)
+    if difficulty == "adaptive":
+        if mat_balance >= 4:
+            adaptive_level = "benevolent"
+        elif mat_balance <= -2:
+            adaptive_level = "challenging"
+        else:
+            adaptive_level = "standard"
+    elif difficulty == "easy":
+        adaptive_level = "benevolent"
+    elif difficulty == "hard":
+        adaptive_level = "challenging"
+    else:
+        adaptive_level = "standard"
 
     model = load_model()
     selected_move: Optional[chess.Move] = None
@@ -106,14 +161,19 @@ def predict_move(fen: str) -> Dict[str, Any]:
                 probs = model.predict_proba(features)[0]
                 sorted_indices = np.argsort(probs)[::-1]
 
-                # Buscar la jugada predicha con mayor probabilidad que sea legal en esta posición
+                legal_candidates = []
                 for idx in sorted_indices:
                     candidate_uci = classes[idx]
                     if candidate_uci in legal_uci_set:
-                        selected_move = legal_uci_set[candidate_uci]
-                        confidence = float(probs[idx])
-                        method = "ml"
-                        break
+                        legal_candidates.append((legal_uci_set[candidate_uci], float(probs[idx])))
+
+                if legal_candidates:
+                    # En modo benevolente, si hay varias opciones, elige una alternativa válida para moderar
+                    if adaptive_level == "benevolent" and len(legal_candidates) > 1:
+                        selected_move, confidence = legal_candidates[1]
+                    else:
+                        selected_move, confidence = legal_candidates[0]
+                    method = "ml"
             else:
                 pred_uci = model.predict(features)[0]
                 if pred_uci in legal_uci_set:
@@ -125,7 +185,7 @@ def predict_move(fen: str) -> Dict[str, Any]:
 
     # Fallback seguro: si el modelo no acertó una jugada legal o no está cargado
     if selected_move is None:
-        selected_move = _heuristic_best_move(board)
+        selected_move = _heuristic_best_move(board, adaptive_level=adaptive_level)
         confidence = 0.5
         method = "heuristic"
 
@@ -144,4 +204,5 @@ def predict_move(fen: str) -> Dict[str, Any]:
         "promotion": promotion,
         "confidence": round(confidence, 4) if confidence is not None else 0.5,
         "method": method,
+        "adaptive_level": adaptive_level,
     }

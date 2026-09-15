@@ -1,22 +1,31 @@
 'use strict';
 
 const { Router } = require('express');
-const { GameMode } = require('../db/models/Game');
-const { Game, Move, DifficultyProfile } = require('../db/models/index');
+const { Chess } = require('chess.js');
+const { Game, GameMode, PlayerType } = require('../db/models/Game');
+const { DifficultyProfile } = require('../db/models/DifficultyProfile');
+const { Move } = require('../db/models/Move');
 const { GameSessionFactory } = require('../factories/GameSessionFactory');
+const { GameRepository } = require('../repositories/GameRepository');
+const { MoveRepository } = require('../repositories/MoveRepository');
 const { AppError } = require('../middleware/errorHandler');
+const { INITIAL_FEN } = require('../constants/chess');
 
 const router = Router();
-const factory = new GameSessionFactory();
+const factory   = new GameSessionFactory();
+const gameRepo  = new GameRepository();
+const moveRepo  = new MoveRepository();
 
 // ── POST /api/games ──────────────────────────────────────────────────────────
 // Crea una nueva partida y devuelve el gameId + FEN inicial.
+// Si la máquina juega con blancas, realiza el primer movimiento de forma
+// síncrona para que el cliente reciba el FEN actualizado de inmediato.
 
 router.post('/', async (req, res, next) => {
   try {
-    const { mode, difficultyProfileId } = req.body;
+    const { mode, difficultyProfileId, playerColor = 'white' } = req.body;
 
-    // Validar modo
+    // Validar modo de juego
     if (!mode || !Object.values(GameMode).includes(mode)) {
       return next(
         new AppError(
@@ -33,15 +42,57 @@ router.post('/', async (req, res, next) => {
       );
     }
 
-    const session = await factory.create({ mode, difficultyProfileId });
+    const session = await factory.create({ mode, difficultyProfileId, playerColor });
+    let currentFen = INITIAL_FEN;
 
-    // Liberar la estrategia (para PVP no hace nada; para futuros modos se manejará diferente)
+    // Si la máquina juega con blancas (el usuario eligió negras), mueve primero.
+    // Se hace de forma síncrona para que el cliente reciba el FEN actualizado en la misma respuesta.
+    if (session.whiteType !== PlayerType.HUMAN) {
+      try {
+        const startMs   = Date.now();
+        const firstMove = await session.opponentStrategy.getNextMove(currentFen, session.gameId);
+        const timeSpentMs = Date.now() - startMs;
+
+        const chess      = new Chess(currentFen);
+        const moveResult = chess.move({
+          from:      firstMove.from,
+          to:        firstMove.to,
+          promotion: firstMove.promotion || 'q',
+        });
+
+        if (moveResult) {
+          const fenAfter = chess.fen();
+
+          await moveRepo.create({
+            gameId:    session.gameId,
+            moveNumber: 1,
+            color:     'white',
+            san:       moveResult.san,
+            fenBefore: currentFen,
+            fenAfter,
+            timeSpentMs,
+          });
+
+          await gameRepo.updateCurrentFen(session.gameId, fenAfter);
+          currentFen = fenAfter;
+        }
+      } catch (firstMoveErr) {
+        // Error no fatal: la partida se crea igualmente desde la posición inicial.
+        // El cliente puede solicitar el turno de la IA cuando esté listo.
+        console.error('[Games] Error en la primera jugada de la máquina:', firstMoveErr);
+      }
+    }
+
+    // Liberar recursos de la estrategia (proceso, conexión, etc.)
     await session.opponentStrategy.dispose();
 
     res.status(201).json({
-      gameId: session.gameId,
+      gameId:    session.gameId,
       mode,
-      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      playerColor,
+      whiteType: session.whiteType,
+      blackType: session.blackType,
+      fen:       currentFen,
     });
   } catch (err) {
     next(err);
@@ -49,7 +100,7 @@ router.post('/', async (req, res, next) => {
 });
 
 // ── GET /api/games/:id ───────────────────────────────────────────────────────
-// Retorna el estado actual de la partida, incluyendo el FEN y las jugadas.
+// Retorna el estado actual de la partida, incluyendo el FEN y el historial de jugadas.
 
 router.get('/:id', async (req, res, next) => {
   try {
@@ -60,7 +111,7 @@ router.get('/:id', async (req, res, next) => {
     });
     if (!game) return next(new AppError(404, 'Partida no encontrada'));
 
-    // Cargar historial de jugadas para mostrar en el frontend
+    // Cargar historial de jugadas ordenado por número de movimiento
     const moves = await Move.findAll({
       where: { gameId: id },
       order: [['moveNumber', 'ASC']],
@@ -73,3 +124,5 @@ router.get('/:id', async (req, res, next) => {
 });
 
 module.exports = router;
+
+

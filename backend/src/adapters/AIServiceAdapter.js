@@ -11,7 +11,7 @@ class AIServiceAdapter {
    * @param {string} [baseUrl] URL base del servicio de IA.
    */
   constructor(baseUrl) {
-    this.baseUrl = baseUrl || env.AI_SERVICE_URL || 'http://localhost:8000';
+    this.baseUrl = baseUrl || env.AI_SERVICE_URL || 'http://127.0.0.1:8000';
   }
 
   /**

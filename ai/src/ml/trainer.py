@@ -22,7 +22,10 @@ def train_model() -> Dict[str, Any]:
     """
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    X, y, _ = build_dataset()
+    X, y, df = build_dataset()
+
+    seed_count = int((df["source"] == "SEED").sum()) if "source" in df.columns else 0
+    user_count = int((df["source"] == "USER").sum()) if "source" in df.columns else len(df)
 
     if len(X) == 0 or len(y) == 0:
         return {
@@ -42,16 +45,19 @@ def train_model() -> Dict[str, Any]:
             "classes_count": len(unique_classes),
         }
 
-    # Entrenar RandomForest optimizado para inferencia en tiempo real
+    print(f"  [Trainer] Entrenando RandomForestClassifier ({len(unique_classes)} clases distintas, {len(X)} ejemplos)...")
     clf = RandomForestClassifier(
-        n_estimators=60,
-        max_depth=15,
-        min_samples_split=2,
+        n_estimators=35,
+        max_depth=12,
+        max_leaf_nodes=400,
+        min_samples_split=8,
+        min_samples_leaf=2,
         random_state=42,
         n_jobs=-1,
     )
 
     clf.fit(X, y)
+    print("  [Trainer] Modelo ajustado con exito. Evaluando precision...")
 
     # Evaluar precisión sobre el conjunto de entrenamiento
     train_preds = clf.predict(X)
@@ -59,10 +65,13 @@ def train_model() -> Dict[str, Any]:
 
     # Persistir el artefacto entrenado
     joblib.dump(clf, MODEL_FILE)
+    print(f"  [Trainer] Artefacto persistido en {MODEL_FILE}")
 
     return {
         "status": "success",
         "dataset_size": len(X),
+        "seed_moves": seed_count,
+        "user_moves": user_count,
         "classes_count": len(clf.classes_),
         "train_accuracy": round(float(acc), 4),
         "model_path": str(MODEL_FILE),

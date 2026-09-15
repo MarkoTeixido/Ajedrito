@@ -15,7 +15,7 @@ async def predict(req: PredictRequest):
     Recibe un FEN y devuelve la próxima mejor jugada legal según el modelo entrenado.
     """
     try:
-        result = predict_move(req.fen)
+        result = predict_move(req.fen, difficulty=req.difficulty or "adaptive")
         return PredictResponse(
             san=result["san"],
             uci=result["uci"],
@@ -24,6 +24,7 @@ async def predict(req: PredictRequest):
             promotion=result["promotion"],
             confidence=result["confidence"],
             method=result["method"],
+            adaptive_level=result.get("adaptive_level", "standard"),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
