@@ -1,26 +1,25 @@
 """
-Dataset builder para el ai-service.
-Lee la tabla moves de Supabase (solo lectura) y construye
-el dataset de entrenamiento a partir de jugadas individuales.
+Dataset builder para Ajedrito AI Service.
+Lee la tabla moves de Supabase (modo lectura) y construye
+el dataset de entrenamiento a partir de jugadas individuales persistidas.
 """
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 import pandas as pd
 import numpy as np
 import chess
 from sqlalchemy import create_engine, text
 
 from src.config import settings
+from src.core.logging import get_logger
 from src.ml.feature_extractor import extract_features_from_board
 
+logger = get_logger(__name__)
 
-import sys
-if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
 
-def build_dataset(source_filter: str = None, max_samples: int = 12000) -> Tuple[np.ndarray, List[str], pd.DataFrame]:
+def build_dataset(
+    source_filter: Optional[str] = None,
+    max_samples: int = 12000,
+) -> Tuple[np.ndarray, List[str], pd.DataFrame]:
     """
     Conecta a la base de datos Supabase mediante SQLAlchemy (modo lectura),
     recupera el historial de movimientos persistidos (incluyendo su origen: SEED o USER)
@@ -31,27 +30,27 @@ def build_dataset(source_filter: str = None, max_samples: int = 12000) -> Tuple[
     """
     engine = create_engine(settings.database_url)
 
-    where_clause = "WHERE m.fen_before IS NOT NULL AND m.san IS NOT NULL"
-    if source_filter:
-        where_clause += f" AND g.source = '{source_filter}'"
-
-    query = text(
-        f"""
+    query_str = """
         SELECT m.id, m.game_id, m.move_number, m.color, m.san, m.fen_before, m.fen_after, m.created_at,
                COALESCE(g.source, 'USER') AS source
         FROM moves m
         LEFT JOIN games g ON m.game_id = g.id
-        {where_clause}
-        ORDER BY m.created_at DESC
-        """
-    )
+        WHERE m.fen_before IS NOT NULL AND m.san IS NOT NULL
+    """
+    params = {}
+    if source_filter:
+        query_str += " AND g.source = :source_filter"
+        params["source_filter"] = source_filter
 
-    print("  [Dataset] Recuperando jugadas persistidas desde Supabase...")
+    query_str += " ORDER BY m.created_at DESC"
+    query = text(query_str)
+
+    logger.info("Recuperando jugadas persistidas desde la base de datos...")
     with engine.connect() as conn:
-        df = pd.read_sql(query, conn)
+        df = pd.read_sql(query, conn, params=params)
 
     total_in_db = len(df)
-    print(f"  [Dataset] Total de jugadas disponibles en BD: {total_in_db}")
+    logger.info(f"Total de jugadas disponibles en BD: {total_in_db}")
 
     if df.empty:
         return np.empty((0, 69)), [], df
@@ -66,13 +65,13 @@ def build_dataset(source_filter: str = None, max_samples: int = 12000) -> Tuple[
             df = pd.concat([user_df, seed_df]).sample(frac=1.0, random_state=42).reset_index(drop=True)
         else:
             df = user_df.sample(n=max_samples, random_state=42).reset_index(drop=True)
-        print(f"  [Dataset] Muestra balanceada seleccionada para entrenamiento: {len(df)} jugadas")
+        logger.info(f"Muestra balanceada seleccionada para entrenamiento: {len(df)} jugadas")
 
     features_list = []
     labels_list = []
     valid_indices = []
 
-    print(f"  [Dataset] Extrayendo 69 caracteristicas numericas por tablero ({len(df)} posiciones)...")
+    logger.info(f"Extrayendo 69 caracteristicas numericas por tablero ({len(df)} posiciones)...")
     for idx, row in df.iterrows():
         fen = row["fen_before"]
         san = row["san"]
@@ -89,11 +88,11 @@ def build_dataset(source_filter: str = None, max_samples: int = 12000) -> Tuple[
             continue
 
         if (idx + 1) % 5000 == 0:
-            print(f"    Progreso: {idx + 1}/{len(df)} posiciones vectorizadas...")
+            logger.info(f"Progreso: {idx + 1}/{len(df)} posiciones vectorizadas...")
 
     X = np.array(features_list, dtype=np.float32) if features_list else np.empty((0, 69))
     y = labels_list
     valid_df = df.loc[valid_indices].reset_index(drop=True)
 
-    print(f"  [Dataset] Dataset construido: {X.shape[0]} muestras vectorizadas listas para entrenamiento.")
+    logger.info(f"Dataset construido: {X.shape[0]} muestras vectorizadas listas para entrenamiento.")
     return X, y, valid_df

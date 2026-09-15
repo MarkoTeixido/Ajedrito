@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class HealthResponse(BaseModel):
@@ -15,6 +15,8 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     """Respuesta con la jugada seleccionada por la IA propia."""
+    model_config = ConfigDict(populate_by_name=True)
+
     san: str = Field(..., description="Notación algebraica estándar (ej: 'Nf3', 'e4')")
     uci: str = Field(..., description="Notación UCI estándar (ej: 'g1f3', 'e2e4')")
     from_square: str = Field(..., alias="from", description="Casilla de origen")
@@ -24,8 +26,6 @@ class PredictResponse(BaseModel):
     method: str = Field("ml", description="Método utilizado ('ml' o 'heuristic')")
     adaptive_level: Optional[str] = Field("standard", description="Nivel adaptativo aplicado ('benevolent', 'standard', 'challenging')")
 
-    class Config:
-        populate_by_name = True
 
 
 class TrainResponse(BaseModel):

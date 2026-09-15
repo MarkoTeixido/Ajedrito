@@ -1,21 +1,15 @@
 """
-Extractor de características numéricas a partir de cadenas FEN.
-Convierte cualquier posición de ajedrez en un vector numérico adecuado
-para algoritmos de Machine Learning (scikit-learn).
+Extractor de características numéricas a partir de tableros y cadenas FEN.
+Convierte cualquier posición de ajedrez en un vector numérico de 69 dimensiones
+adecuado para algoritmos de Machine Learning (scikit-learn).
 """
 import numpy as np
 import chess
 
-# Mapeo numérico estándar de piezas de ajedrez
-# Positivo para blancas, negativo para negras
-PIECE_VALUES = {
-    chess.PAWN: 1,
-    chess.KNIGHT: 3,
-    chess.BISHOP: 3,
-    chess.ROOK: 5,
-    chess.QUEEN: 9,
-    chess.KING: 100,
-}
+from src.core.constants import FEATURE_PIECE_VALUES
+
+# Mapeo numérico estándar de piezas de ajedrez (positivo blancas, negativo negras)
+PIECE_VALUES = FEATURE_PIECE_VALUES
 
 
 def extract_features_from_board(board: chess.Board) -> np.ndarray:
@@ -48,7 +42,7 @@ def extract_features_from_board(board: chess.Board) -> np.ndarray:
 
 def extract_features_from_fen(fen: str) -> np.ndarray:
     """
-    Parsea una cadena FEN y devuelve su vector de características.
+    Parsea una cadena FEN y devuelve su vector de 69 características.
     """
     board = chess.Board(fen)
     return extract_features_from_board(board)

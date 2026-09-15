@@ -1,194 +1,121 @@
 """
-Predictor de jugadas para el ai-service.
-Carga el modelo scikit-learn entrenado y evalúa la posición actual (FEN).
-Filtra estrictamente contra las jugadas legales para garantizar
-que NUNCA se produzca una jugada ilegal.
+Predictor de jugadas para Ajedrito AI Service.
+Orquesta la inferencia del modelo propio scikit-learn, el filtrado estricto
+de jugadas legales de la FIDE, la política de dificultad y el fallback heurístico.
 """
-from pathlib import Path
 from typing import Dict, Any, Optional
-import joblib
 import numpy as np
 import chess
 
+from src.core.constants import (
+    MODEL_FILE,
+    MODELS_DIR,
+    ADAPTIVE_BENEVOLENT,
+    ADAPTIVE_STANDARD,
+    DIFFICULTY_ADAPTIVE,
+)
+from src.core.logging import get_logger
 from src.ml.feature_extractor import extract_features_from_board
+from src.ml.model_registry import ModelRegistry, load_model
+from src.ml.heuristics import (
+    HeuristicEvaluator,
+    calculate_material_balance,
+    select_best_heuristic_move,
+)
+from src.ml.difficulty import DifficultyPolicy, resolve_adaptive_level
 
-MODELS_DIR = Path(__file__).resolve().parent.parent.parent / "models"
-MODEL_FILE = MODELS_DIR / "chess_model.joblib"
+logger = get_logger(__name__)
 
-_cached_model = None
-
-
-def load_model():
-    """Carga o retorna en memoria el modelo entrenado."""
-    global _cached_model
-    if _cached_model is None and MODEL_FILE.exists():
-        try:
-            _cached_model = joblib.load(MODEL_FILE)
-        except Exception as e:
-            print(f"[Predictor] Error cargando modelo {MODEL_FILE}: {e}")
-            _cached_model = None
-    return _cached_model
+# Compatibilidad con imports directos existentes
+_calculate_material_balance = calculate_material_balance
+_heuristic_best_move = select_best_heuristic_move
 
 
-def _calculate_material_balance(board: chess.Board) -> int:
+def _heuristic_moves(board: chess.Board):
+    """Función de compatibilidad con tests o consumidores internos."""
+    return HeuristicEvaluator.score_legal_moves(board)
+
+
+def _predict_with_model(
+    model: Any,
+    board: chess.Board,
+    legal_uci_set: Dict[str, chess.Move],
+    adaptive_level: str,
+) -> tuple[Optional[chess.Move], Optional[float]]:
     """
-    Calcula la diferencia de material desde la perspectiva del turno activo.
-    Positivo: ventaja del turno activo. Negativo: desventaja.
+    Ejecuta la inferencia sobre el modelo scikit-learn y selecciona
+    la mejor opción legal considerando el nivel adaptativo.
     """
-    values = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
-    turn_color = board.turn
-    opp_color = not turn_color
+    try:
+        features = extract_features_from_board(board).reshape(1, -1)
+        classes = model.classes_
 
-    my_score = sum(len(board.pieces(pt, turn_color)) * val for pt, val in values.items())
-    opp_score = sum(len(board.pieces(pt, opp_color)) * val for pt, val in values.items())
-    return my_score - opp_score
+        if hasattr(model, "predict_proba"):
+            probs = model.predict_proba(features)[0]
+            sorted_indices = np.argsort(probs)[::-1]
 
+            legal_candidates = []
+            for idx in sorted_indices:
+                candidate_uci = classes[idx]
+                if candidate_uci in legal_uci_set:
+                    legal_candidates.append((legal_uci_set[candidate_uci], float(probs[idx])))
 
-def _heuristic_moves(board: chess.Board) -> list:
-    """
-    Puntúa todas las jugadas legales con criterios posicionales y tácticos:
-    capturas, jaques, control central, enroque y desarrollo.
-    """
-    legal_moves = list(board.legal_moves)
-    if not legal_moves:
-        raise ValueError("No hay jugadas legales en la posición dada.")
+            if legal_candidates:
+                # En modo benevolente, modera la agresividad eligiendo la 2da opción si existe
+                if adaptive_level == ADAPTIVE_BENEVOLENT and len(legal_candidates) > 1:
+                    return legal_candidates[1]
+                return legal_candidates[0]
+        else:
+            pred_uci = model.predict(features)[0]
+            if pred_uci in legal_uci_set:
+                return legal_uci_set[pred_uci], 1.0
+    except Exception as err:
+        logger.warning(f"Error durante inferencia ML: {err}")
 
-    piece_values = {
-        chess.PAWN: 10,
-        chess.KNIGHT: 30,
-        chess.BISHOP: 30,
-        chess.ROOK: 50,
-        chess.QUEEN: 90,
-        chess.KING: 0,
-    }
-
-    scored_moves = []
-    for move in legal_moves:
-        score = 0
-        # 1. Si captura una pieza rival
-        if board.is_capture(move):
-            captured_piece = board.piece_at(move.to_square)
-            if captured_piece:
-                score += piece_values.get(captured_piece.piece_type, 10) * 10
-            else:
-                score += 10  # En passant
-
-        # 2. Si da jaque
-        if board.gives_check(move):
-            score += 15
-
-        # 3. Control de casillas centrales (d4, d5, e4, e5)
-        if move.to_square in [chess.D4, chess.D5, chess.E4, chess.E5]:
-            score += 5
-
-        # 4. Enroque
-        if board.is_castling(move):
-            score += 12
-
-        # 5. Promoción de peón
-        if move.promotion:
-            score += 80
-
-        scored_moves.append((score, move))
-
-    # Ordenar de mayor a menor puntaje
-    scored_moves.sort(key=lambda x: x[0], reverse=True)
-    return scored_moves
+    return None, None
 
 
-def _heuristic_best_move(board: chess.Board, adaptive_level: str = "standard") -> chess.Move:
-    """
-    Selecciona una jugada legal según la política adaptativa:
-    - 'challenging': la mejor jugada táctica de máxima puntuación.
-    - 'benevolent': si el jugador está perdiendo fuertemente, selecciona una jugada sólida de desarrollo
-      en lugar de la combinación más destructiva, manteniendo la partida competitiva.
-    - 'standard': la mejor jugada legal disponible.
-    """
-    scored = _heuristic_moves(board)
-    if not scored:
-        raise ValueError("No hay jugadas legales.")
-
-    if adaptive_level == "benevolent" and len(scored) > 1:
-        # Elegir una jugada sólida pero no la más agresiva si la mejor es una captura aplastante
-        for score, move in scored[1:]:
-            if not board.is_capture(move):
-                return move
-        return scored[1][1]
-
-    return scored[0][1]
-
-
-def predict_move(fen: str, difficulty: str = "adaptive") -> Dict[str, Any]:
+def predict_move(fen: str, difficulty: str = DIFFICULTY_ADAPTIVE) -> Dict[str, Any]:
     """
     Predice la próxima jugada para una posición dada en FEN aplicando la política adaptativa.
     Garantiza que la jugada seleccionada sea 100% legal según las reglas de la FIDE.
     """
-    board = chess.Board(fen)
+    try:
+        board = chess.Board(fen)
+    except Exception as e:
+        raise ValueError(f"Formato FEN invalido: {e}")
 
     if board.is_game_over():
         raise ValueError("La posición dada ya corresponde a una partida terminada.")
 
     legal_moves = list(board.legal_moves)
+    if not legal_moves:
+        raise ValueError("No hay jugadas legales en la posición dada.")
+
     legal_uci_set = {m.uci(): m for m in legal_moves}
 
-    # Evaluar balance de material en la posición
-    mat_balance = _calculate_material_balance(board)
-    if difficulty == "adaptive":
-        if mat_balance >= 4:
-            adaptive_level = "benevolent"
-        elif mat_balance <= -2:
-            adaptive_level = "challenging"
-        else:
-            adaptive_level = "standard"
-    elif difficulty == "easy":
-        adaptive_level = "benevolent"
-    elif difficulty == "hard":
-        adaptive_level = "challenging"
-    else:
-        adaptive_level = "standard"
+    # 1. Evaluar balance de material y política adaptativa
+    mat_balance = calculate_material_balance(board)
+    adaptive_level = resolve_adaptive_level(difficulty, mat_balance)
 
-    model = load_model()
+    # 2. Intentar inferencia con modelo entrenado
+    model = ModelRegistry.load_model()
     selected_move: Optional[chess.Move] = None
     confidence: Optional[float] = None
     method = "heuristic"
 
     if model is not None:
-        try:
-            features = extract_features_from_board(board).reshape(1, -1)
-            classes = model.classes_
+        selected_move, confidence = _predict_with_model(model, board, legal_uci_set, adaptive_level)
+        if selected_move is not None:
+            method = "ml"
 
-            if hasattr(model, "predict_proba"):
-                probs = model.predict_proba(features)[0]
-                sorted_indices = np.argsort(probs)[::-1]
-
-                legal_candidates = []
-                for idx in sorted_indices:
-                    candidate_uci = classes[idx]
-                    if candidate_uci in legal_uci_set:
-                        legal_candidates.append((legal_uci_set[candidate_uci], float(probs[idx])))
-
-                if legal_candidates:
-                    # En modo benevolente, si hay varias opciones, elige una alternativa válida para moderar
-                    if adaptive_level == "benevolent" and len(legal_candidates) > 1:
-                        selected_move, confidence = legal_candidates[1]
-                    else:
-                        selected_move, confidence = legal_candidates[0]
-                    method = "ml"
-            else:
-                pred_uci = model.predict(features)[0]
-                if pred_uci in legal_uci_set:
-                    selected_move = legal_uci_set[pred_uci]
-                    confidence = 1.0
-                    method = "ml"
-        except Exception as e:
-            print(f"[Predictor] Error durante inferencia ML: {e}")
-
-    # Fallback seguro: si el modelo no acertó una jugada legal o no está cargado
+    # 3. Fallback seguro heurístico si el modelo no está disponible o no predijo jugada legal
     if selected_move is None:
-        selected_move = _heuristic_best_move(board, adaptive_level=adaptive_level)
+        selected_move = select_best_heuristic_move(board, adaptive_level=adaptive_level)
         confidence = 0.5
         method = "heuristic"
 
+    # 4. Formatear la respuesta
     san_move = board.san(selected_move)
     uci_str = selected_move.uci()
 

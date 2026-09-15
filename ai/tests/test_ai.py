@@ -1,5 +1,5 @@
 """
-Pruebas unitarias para el microservicio de IA (Pytest).
+Pruebas de integración y endpoints para el microservicio de IA (Pytest).
 """
 import pytest
 import chess
@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from src.main import app
 from src.ml.feature_extractor import extract_features_from_fen
 from src.ml.predictor import predict_move
+from src.ml.model_registry import ModelRegistry
 
 client = TestClient(app)
 
@@ -55,6 +56,23 @@ def test_predictor_rejects_game_over_position():
         predict_move(scholars_mate_fen)
 
 
+def test_predictor_fallback_when_no_model():
+    ModelRegistry.clear_cache()
+    # Forzar None en load_model
+    original_load = ModelRegistry.load_model
+    ModelRegistry.load_model = classmethod(lambda cls, *args, **kwargs: None)
+    try:
+        initial_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        result = predict_move(initial_fen)
+        assert result["method"] == "heuristic"
+        assert result["confidence"] == 0.5
+        board = chess.Board(initial_fen)
+        assert result["uci"] in [m.uci() for m in board.legal_moves]
+    finally:
+        ModelRegistry.load_model = original_load
+        ModelRegistry.clear_cache()
+
+
 def test_predict_endpoint_via_http():
     response = client.post(
         "/predict",
@@ -69,6 +87,41 @@ def test_predict_endpoint_via_http():
     assert data["from"] is not None
     assert data["to"] is not None
     assert "adaptive_level" in data
+
+
+def test_predict_endpoint_invalid_fen():
+    response = client.post(
+        "/predict",
+        json={"fen": "this-is-not-a-valid-fen"},
+    )
+    assert response.status_code == 400
+    data = response.json()
+    assert "detail" in data
+
+
+def test_predict_endpoint_game_over():
+    scholars_mate_fen = "r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4"
+    response = client.post(
+        "/predict",
+        json={"fen": scholars_mate_fen},
+    )
+    assert response.status_code == 400
+    data = response.json()
+    assert "partida terminada" in data["detail"]
+
+
+def test_health_check_endpoint():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_root_endpoint():
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["service"] == "ajedrito-ai"
+    assert "version" in data
 
 
 def test_predict_adaptive_difficulty():

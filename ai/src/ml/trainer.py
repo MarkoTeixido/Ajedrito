@@ -1,24 +1,26 @@
 """
-Trainer del modelo de IA propia.
-Entrena un clasificador de scikit-learn con las jugadas persistidas
-en Supabase y serializa el modelo entrenado en formato joblib.
+Trainer del modelo de IA propia de Ajedrito.
+Entrena un clasificador RandomForest de scikit-learn con las jugadas persistidas
+en la base de datos y serializa el modelo entrenado en formato joblib.
 """
-from pathlib import Path
 from typing import Dict, Any
 import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
+from src.core.constants import MODELS_DIR, MODEL_FILE
+from src.core.logging import get_logger
 from src.data.dataset_builder import build_dataset
+from src.ml.model_registry import ModelRegistry
 
-MODELS_DIR = Path(__file__).resolve().parent.parent.parent / "models"
-MODEL_FILE = MODELS_DIR / "chess_model.joblib"
+logger = get_logger(__name__)
 
 
 def train_model() -> Dict[str, Any]:
     """
-    Construye el dataset de entrenamiento desde Supabase,
-    entrena el clasificador RandomForest y persiste el artefacto .joblib.
+    Construye el dataset de entrenamiento desde la base de datos,
+    entrena el clasificador RandomForest, persiste el artefacto .joblib
+    y actualiza la caché en memoria del ModelRegistry.
     """
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -34,8 +36,6 @@ def train_model() -> Dict[str, Any]:
             "dataset_size": 0,
         }
 
-    # Si hay muy pocas clases distintas (ej. 1 sola jugada en la base),
-    # duplicamos o usamos un clasificador adecuado
     unique_classes = set(y)
     if len(unique_classes) < 2:
         return {
@@ -45,7 +45,7 @@ def train_model() -> Dict[str, Any]:
             "classes_count": len(unique_classes),
         }
 
-    print(f"  [Trainer] Entrenando RandomForestClassifier ({len(unique_classes)} clases distintas, {len(X)} ejemplos)...")
+    logger.info(f"Entrenando RandomForestClassifier ({len(unique_classes)} clases distintas, {len(X)} ejemplos)...")
     clf = RandomForestClassifier(
         n_estimators=35,
         max_depth=12,
@@ -57,7 +57,7 @@ def train_model() -> Dict[str, Any]:
     )
 
     clf.fit(X, y)
-    print("  [Trainer] Modelo ajustado con exito. Evaluando precision...")
+    logger.info("Modelo ajustado con exito. Evaluando precision...")
 
     # Evaluar precisión sobre el conjunto de entrenamiento
     train_preds = clf.predict(X)
@@ -65,7 +65,10 @@ def train_model() -> Dict[str, Any]:
 
     # Persistir el artefacto entrenado
     joblib.dump(clf, MODEL_FILE)
-    print(f"  [Trainer] Artefacto persistido en {MODEL_FILE}")
+    logger.info(f"Artefacto persistido en {MODEL_FILE}")
+
+    # Actualizar la caché del registro del modelo en memoria
+    ModelRegistry.set_model(clf)
 
     return {
         "status": "success",
