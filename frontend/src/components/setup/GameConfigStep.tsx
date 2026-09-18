@@ -36,7 +36,7 @@ export default function GameConfigStep({
   onStartGame,
 }: GameConfigStepProps) {
   return (
-    <div className="w-full rounded-3xl border border-[#E5E7EB] bg-white p-6 sm:p-7 md:p-8 shadow-sm flex flex-col gap-4 animate-in fade-in slide-in-from-right-3 duration-200">
+    <div className="w-full rounded-3xl border border-[#E5E7EB] bg-white p-5 sm:p-7 md:p-8 shadow-sm flex flex-col gap-3.5 sm:gap-4 animate-in fade-in slide-in-from-right-3 duration-200">
       {/* Barra superior para volver a las modalidades */}
       <div className="flex items-center justify-between pb-2 border-b border-[#F1F3F5]">
         <button
@@ -55,7 +55,7 @@ export default function GameConfigStep({
       {/* Resumen de la modalidad elegida */}
       <div className="flex items-center gap-3">
         <div
-          className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-2xs ${
+          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-2xs ${
             selectedMode === 'PVP'
               ? 'bg-[#DDEAE1] text-[#233E31]'
               : selectedMode === 'PV_STOCKFISH'
@@ -72,7 +72,7 @@ export default function GameConfigStep({
           )}
         </div>
         <div>
-          <h2 className="font-serif-title text-xl sm:text-2xl font-bold text-[#1C3026] leading-tight">
+          <h2 className="font-serif-title text-lg sm:text-xl md:text-2xl font-bold text-[#1C3026] leading-tight">
             {selectedMode === 'PVP'
               ? 'Jugador vs Jugador'
               : selectedMode === 'PV_STOCKFISH'
@@ -93,7 +93,7 @@ export default function GameConfigStep({
       {selectedMode === 'PV_STOCKFISH' && (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-bold text-[#2D3748]">Seleccioná la dificultad</span>
-          <div className="grid grid-cols-4 gap-1.5 p-1 rounded-2xl bg-[#F4F5F2] border border-[#E2E8F0]">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-2xl bg-[#F4F5F2] border border-[#E2E8F0]">
             {STOCKFISH_LEVELS.map((level) => {
               const profileMatch = profiles.find((p) => p.name === level.name);
               const isSelected = profileMatch ? selectedDifficultyId === profileMatch.id : false;

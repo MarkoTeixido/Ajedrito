@@ -139,15 +139,15 @@ export default function Home() {
 
       {/* Contenido Principal */}
       <main
-        className={`flex-1 min-h-0 flex justify-center max-w-7xl mx-auto w-full z-10 relative px-4 ${
+        className={`flex-1 min-h-0 flex max-w-7xl mx-auto w-full z-10 relative px-4 ${
           !activeGameId
-            ? 'items-start pt-2 sm:pt-4 md:pt-6'
-            : 'items-start pt-1 sm:pt-2 md:pt-4 pb-8'
+            ? 'flex-col items-center justify-center pt-2 pb-16 sm:pt-4 sm:pb-24'
+            : 'justify-center items-start pt-1 sm:pt-2 md:pt-4 pb-12'
         }`}
       >
         {!activeGameId ? (
-          /* Estado 1: Configuración inicial de la partida */
-          <div className="w-full max-w-[500px] md:max-w-[530px] flex flex-col gap-3">
+          /* Estado 1: Configuración inicial de la partida (centrada con armonía) */
+          <div className="w-full max-w-[480px] sm:max-w-[520px] flex flex-col gap-3">
             {!selectedMode ? (
               <ModeSelector onSelectMode={setSelectedMode} />
             ) : (

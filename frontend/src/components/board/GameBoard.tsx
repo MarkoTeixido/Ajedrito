@@ -24,10 +24,10 @@ export default function GameBoard({
   return (
     <div className="flex flex-col items-center gap-3">
       {/* Contenedor del Tablero */}
-      <div className="bg-white p-4 sm:p-5 rounded-3xl shadow-lg border border-[#E5E7EB] flex items-center justify-center">
+      <div className="bg-white p-3 sm:p-5 rounded-2xl sm:rounded-3xl shadow-lg border border-[#E5E7EB] flex items-center justify-center max-w-full">
         <div
           id="ajedrito-board"
-          className="w-[min(480px,58vh)] aspect-square rounded-2xl overflow-hidden shadow-sm"
+          className="w-[min(480px,calc(100vw-3.5rem),55vh)] aspect-square rounded-xl sm:rounded-2xl overflow-hidden shadow-sm"
         >
           <Chessboard
             options={{
