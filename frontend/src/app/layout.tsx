@@ -11,6 +11,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Ajedrito",
   description: "Sistema de ajedrez web local — JvJ, vs Stockfish y vs IA propia",
+  icons: {
+    icon: "https://i.imgur.com/ZTPwQCS.jpeg",
+    shortcut: "https://i.imgur.com/ZTPwQCS.jpeg",
+    apple: "https://i.imgur.com/ZTPwQCS.jpeg",
+  },
 };
 
 export default function RootLayout({

@@ -7,7 +7,7 @@ export default function AjedritoHeader() {
       {/* Lado izquierdo: Logo Ajedrito (ícono y nombre integrados) */}
       <div className="flex items-center">
         <img
-          src="/logo.png"
+          src="https://i.imgur.com/1E8Q1xe.png"
           alt="Ajedrito"
           className="h-16 sm:h-20 md:h-24 w-auto object-contain drop-shadow-xs"
         />
@@ -17,7 +17,7 @@ export default function AjedritoHeader() {
       <div className="flex items-center gap-2.5 sm:gap-3 md:gap-3.5">
         {/* Escudo oficial UNVIME con presencia equivalente al logo principal */}
         <img
-          src="/logo_unvime.png"
+          src="https://i.imgur.com/DjwBNOa.png"
           alt="UNVIME - Universidad Nacional de Villa Mercedes"
           className="h-16 sm:h-20 md:h-24 w-auto object-contain drop-shadow-xs"
         />
